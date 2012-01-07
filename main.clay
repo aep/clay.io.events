@@ -1,0 +1,41 @@
+import libc;
+import time;
+import unix;
+import io.events;
+
+alias F_GETFD = 1;
+alias F_SETFD = 2;
+
+
+
+[T] private nameOfType(x:T) = StaticName(T);
+stdinReadyRead(ev: io.events.Event)
+{
+    print(nameOfType(*ev));
+    print(" -->");
+    print(readLine(stdin));
+    println("<--");
+}
+
+timeout(ev: io.events.Event)
+{
+    print("----------- current unix time: ");
+    print(Int(time.time()));
+    println(" -----------");
+}
+
+main()
+{
+    var el = io.events.Dispatcher();
+
+    var timer  = io.events.Timer(2000u);
+    io.events.listen(el, &timer, io.events.EventCallback(timeout));
+
+    unix.fcntl(0, F_SETFD, bitor(unix.fcntl(0, F_GETFD) , unix.O_NONBLOCK));
+    io.events.listen(el, stdin, io.events.FileReadyRead, io.events.EventCallback(stdinReadyRead));
+
+    return io.events.run(el);
+}
+
+
+

@@ -1,0 +1,6 @@
+public import io.events.platform as platform;
+public import io.events.common.*;
+
+
+// -------- specifics
+public alias Dispatcher = platform.Dispatcher;

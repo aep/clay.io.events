@@ -1,0 +1,39 @@
+this is a prototype implementation of an asynch io toolkit for clay.
+
+The main building blocks are
+
+    - EventSource
+    - Dispatcher
+    - EventCallback
+
+An EventSource can be any T that qualifies EventSource?(T), but for
+doing any useful, there must be a listen(D,S) implementation, where
+D is the os specific Dispatcher.
+
+The os abstraction magic happens in the dispatcher. O  unixoid OS this
+is basicly poll()  and the different listen() functions simply forward
+the fd of whatever the EventSource is to the FD listen() function.
+
+For example listen(d:UnixDispatcher, s:Socket) would be implemented as
+listen(d, fileDescriptor(s)), hiding away the os specific event source.
+
+Unix is easy, since everything - with the exception of timers - is a
+file descriptor. On windows the real power of the abstraction shows,
+when we need to imeplement complex redirection behind the users back.
+
+-------------------------------------------------------------------------
+
+Compiling the test app:
+
+
+have clay in path and type make.
+./test will be your friend
+
+
+-------------------------------------------------------------------------
+
+Installing:
+
+as root, type make install.  be sure PREFIX matches your installation.
+Also note that clay currently does not handle local includes as priority,
+so you need to remove the installed files when recompiling the test app.

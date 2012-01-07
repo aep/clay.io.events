@@ -1,0 +1,129 @@
+import libc;
+import time;
+import unix;
+import os.errors;
+import io.files.raw.*;
+import io.events.common.*;
+
+alias POLLIN       = 0x001;
+alias POLLOUT      = 0x004;
+alias POLLHUP      = 0x010;
+alias POLLERR      = 0x008;
+
+public record UnixFileReadyReadEvent
+(
+    file: Int
+);
+instance Event(UnixFileReadyReadEvent);
+overload EventSource? (static Int) = true;
+
+private record UnixTimerInternal
+(
+    callback: EventCallback,
+    p: Pointer[Timer],
+    expire: UInt
+);
+
+
+private record PollFd
+(
+    fd: Int,             /* File descriptor to poll.  */
+    events : Short,      /* Types of events poller cares about.  */
+    revents: Short       /* Types of events that actually occurred.  */
+);
+
+
+variant EventFile (File, Int);
+private record UnixFileInternal
+(
+    callback: EventCallback,
+    file: EventFile
+);
+
+public record Dispatcher
+(
+    running: Bool,
+    timers :    Vector[UnixTimerInternal],
+    files  :    Vector[UnixFileInternal],
+    pollfds:    Vector[PollFd]
+);
+overload EventDispatcher? (static Dispatcher) = true;
+
+overload listen(d : Dispatcher, s : Pointer[Timer], c : EventCallback)
+{
+    var t = UnixTimerInternal(c, s, s^.timeout);
+    t.expire = s^.timeout;
+    push(d.timers, t);
+}
+overload listen(d : Dispatcher, s : File, events: Int, c : EventCallback)
+{
+    push(d.pollfds, PollFd(fileHandle(s), Short(events), 0s));
+    push(d.files,   UnixFileInternal(c, EventFile(s)));
+}
+
+overload listen(d : Dispatcher, s : Int, events: Int, c : EventCallback)
+{
+    push(d.pollfds, PollFd(s, Short(events), 0s));
+    push(d.files,   UnixFileInternal(c, EventFile(s)));
+}
+
+external poll(fds : Pointer[PollFd], nfds: Int, timeout : Int);
+
+
+private timeMs() : ULong{
+    var tv = unix.Struct_timeval();
+    var r = unix.gettimeofday(&tv, unix.__timezone_ptr_t(0));
+    if (r == Type(r)(-1))
+        throw os.errors.GenericOSError(unix.errno());
+    var secs = ULong(tv.tv_sec);
+    var usecs = ULong(tv.tv_usec);
+    return secs * ULong(1000 * 1000) + usecs;
+}
+
+
+
+[T] define readyReadD(d : Dispatcher, c: EventCallback, t : T);
+overload readyReadD(d : Dispatcher, c: EventCallback, t : File)
+{
+    dispatchEvent(d, t, c, FileReadyReadEvent(t));
+}
+overload readyReadD(d : Dispatcher, c: EventCallback, t : Int)
+{
+    dispatchEvent(d, t, c, UnixFileReadyReadEvent(t));
+}
+
+overload run(d : Dispatcher) : Int
+{
+    d.running = true;
+    var timeout = 0;
+    while (d.running) {
+        var time = timeMs();
+        poll(d.pollfds.data, Int(size(d.pollfds)), timeout);
+        var timediff = (timeMs() - time) / 1000;
+
+        timeout = 0;
+        for (v in d.timers) {
+            if (v.expire <= timediff) {
+                v.expire = v.p^.timeout;
+                dispatchEvent(d, v.p^, v.callback, TimeoutEvent());
+            } else {
+                v.expire = Int(v.expire - timediff);
+            }
+            if (timeout == 0 or timeout > v.expire) {
+                timeout = v.expire;
+            }
+        }
+
+        for (i in range(size(d.pollfds))) {
+            ref n = d.files[i];
+            if (bitand(d.pollfds[i].revents, POLLIN) != 0) {
+                readyReadD(d, n.callback, *(n.file));
+            }
+        }
+    }
+    return 666;
+}
+
+
+
+

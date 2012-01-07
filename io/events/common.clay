@@ -1,0 +1,50 @@
+// -------- generic
+
+[T] public EventDispatcher? (static T) = false;
+[T] public EventSource?     (static T) = false;
+
+public variant Event;
+
+public alias EventCallback = Lambda[[Event],[]];
+
+[D | EventDispatcher?(D) ]
+public define listen(d : D, ..etc);
+
+[D | EventDispatcher?(D)]
+public define run(d : D) : Int;
+
+[D, S, E | EventDispatcher?(D) and EventSource?(S) and VariantMember?(Event, E) ]
+public dispatchEvent(d : D, s : S, c: EventCallback, e : E)
+{
+    c(Event(e));
+}
+
+// ------ timer
+
+public record Timer
+(
+    timeout: UInt
+);
+overload EventSource? (static Timer) = true;
+
+public record TimeoutEvent
+(
+);
+instance Event(TimeoutEvent);
+
+
+// -------- file
+
+
+alias FileReadyRead  = 0x001;
+alias FileReadyWrite = 0x004;
+
+overload EventSource? (static File) = true;
+
+public record FileReadyReadEvent
+(
+    file: File
+);
+instance Event(FileReadyReadEvent);
+
+
